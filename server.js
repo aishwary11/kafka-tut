@@ -30,6 +30,7 @@ app.get('/consume', async (req, res) => {
   const messages = [];
   await consumer.run({
     eachMessage: async ({ topic, partition, message }) => {
+      console.log(`Received message ${message.value} on topic ${topic} on the partition ${partition}`);
       messages.push(message.value.toString());
     },
   });
