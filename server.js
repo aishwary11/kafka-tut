@@ -60,10 +60,8 @@ const createConsumer = async (topic) => {
 
 // Function to initialize consumers for predefined topics
 const initializeConsumers = async () => {
-  for (const topic of topics) {
-    await ensureTopicExists(topic); // Ensure the topic exists
-    await createConsumer(topic);
-  }
+  await Promise.all(topics.map(ensureTopicExists)); // Ensure all topics exist
+  await Promise.all(topics.map(createConsumer)); // Create consumers for all topics
 };
 
 // Route to send a message to Kafka
@@ -71,10 +69,7 @@ app.post("/send", async (req, res) => {
   const { topic, message } = req.body;
   try {
     await ensureTopicExists(topic); // Ensure the topic exists
-    await producer.send({
-      topic,
-      messages: [{ value: message }],
-    });
+    await producer.send({ topic, messages: [{ value: message }] });
     console.log(`Message sent to ${topic}: ${message}`);
     res.send(`Message sent to ${topic}`);
   } catch (error) {
@@ -111,9 +106,7 @@ app.listen(PORT, async () => {
 const gracefulShutdown = async () => {
   console.log("Disconnecting Kafka producer and consumers...");
   await producer.disconnect();
-  for (const consumer of Object.values(consumers)) {
-    await consumer.disconnect();
-  }
+  await Promise.all(Object.values(consumers).map((consumer) => consumer.disconnect()));
   process.exit();
 };
 
