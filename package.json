@@ -8,7 +8,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "express": "^4.21.0",
+    "express": "^4.21.1",
     "kafkajs": "^2.2.4"
   },
   "devDependencies": {

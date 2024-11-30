@@ -1,74 +1,57 @@
 import express from "express";
-import { Kafka, logLevel } from "kafkajs";
-
+import { Kafka } from "kafkajs";
 const app = express();
+const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 const kafka = new Kafka({
-  logLevel: logLevel.DEBUG,
   clientId: "kafka-demo",
   brokers: ["kafka:9092"],
 });
 
 const producer = kafka.producer();
 const admin = kafka.admin();
-const consumers = {}; // Store consumers for different topics
-const messages = {}; // Store messages for different topics
+const consumer = kafka.consumer({ groupId: `kafka-group-${Date.now()}` });
 
-const topics = ["demo"]; // Define your topics here
+const topics = ["demo"];
 
-// Function to initialize the Kafka producer
 const initializeKafka = async () => {
   await producer.connect();
-  console.log("Kafka producer initialized");
-};
-
-// Function to ensure topic exists
-const ensureTopicExists = async (topic) => {
   await admin.connect();
-  const topics = await admin.listTopics();
-  if (!topics.includes(topic)) {
-    await admin.createTopics({
-      topics: [{ topic }],
-    });
-    console.log(`Topic ${topic} created`);
-  } else {
-    console.log(`Topic ${topic} already exists`);
-  }
-  await admin.disconnect();
+  console.log("Kafka producer and admin initialized");
 };
 
-// Function to create and run a consumer for a specific topic
-const createConsumer = async (topic) => {
-  if (consumers[topic]) {
-    return consumers[topic];
+const ensureTopicExists = async (topic) => {
+  try {
+    const topicExists = await admin.fetchTopicMetadata({ topics: [topic] });
+    if (!topicExists.topics.length) {
+      await admin.createTopics({ topics: [{ topic }], });
+      console.log(`Topic ${topic} created`);
+    } else {
+      console.log(`Topic ${topic} already exists`);
+    }
+  } catch (error) {
+    console.error(`Error ensuring topic exists: ${error.message}`);
   }
-  const consumer = kafka.consumer({ groupId: `express-group-${topic}-${Date.now()}` });
+};
+
+const createConsumer = async (topic, cb) => {
   await consumer.connect();
   await consumer.subscribe({ topic, fromBeginning: false });
-  messages[topic] = [];
-  consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      console.log(`Received message ${message.value.toString()} on topic ${topic}`);
-      messages[topic].push(message.value.toString());
+  await consumer.run({
+    eachMessage: async ({ topic, message }) => {
+      const msg = message.value.toString();
+      console.log(`Received message ${msg} on topic ${topic}`);
+      cb(msg);
     },
   });
-  consumers[topic] = consumer; // Store the consumer for later use
-  console.log(`Consumer created and running for topic ${topic}`);
   return consumer;
 };
 
-// Function to initialize consumers for predefined topics
-const initializeConsumers = async () => {
-  await Promise.all(topics.map(ensureTopicExists)); // Ensure all topics exist
-  await Promise.all(topics.map(createConsumer)); // Create consumers for all topics
-};
-
-// Route to send a message to Kafka
 app.post("/send", async (req, res) => {
   const { topic, message } = req.body;
   try {
-    await ensureTopicExists(topic); // Ensure the topic exists
+    await ensureTopicExists(topic);
     await producer.send({ topic, messages: [{ value: message }] });
     console.log(`Message sent to ${topic}: ${message}`);
     res.send(`Message sent to ${topic}`);
@@ -78,37 +61,22 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// Route to get consumed messages for a specific topic
-app.get("/consume", async (req, res) => {
-  const { topic } = req.query;
-  try {
-    if (!messages[topic]) {
-      return res.status(404).send("No messages found for this topic.");
-    }
-    const consumedMessages = [...messages[topic]]; // Clone messages using spread operator
-    messages[topic].length = 0; // Clear messages after cloning
-    res.json(consumedMessages);
-  } catch (error) {
-    console.error("Error consuming messages:", error);
-    res.status(500).send("Error consuming messages");
-  }
-});
-
-// Start the Express server and initialize Kafka
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`Express server is running on port ${PORT}`);
-  await initializeKafka();
-  await initializeConsumers(); // Initialize consumers for predefined topics
-});
-
-// Handle graceful shutdown
 const gracefulShutdown = async () => {
-  console.log("Disconnecting Kafka producer and consumers...");
+  console.log("Disconnecting Kafka producer, admin, and consumer...");
   await producer.disconnect();
-  await Promise.all(Object.values(consumers).map((consumer) => consumer.disconnect()));
+  await admin.disconnect();
+  await consumer.disconnect();
   process.exit();
 };
 
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
+
+app.listen(PORT, async () => {
+  console.log(`Express server is running on port ${PORT}`);
+  await initializeKafka();
+  await Promise.all(topics.map(ensureTopicExists));
+  await createConsumer("demo", (msg) => {
+    console.log(`Consumed message: ${msg}`);
+  });
+});

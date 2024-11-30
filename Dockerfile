@@ -1,7 +1,7 @@
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /usr/src/app
 COPY package*.json ./
-RUN npm i -f
+RUN npm ci -f
 COPY . .
 EXPOSE 3000
 CMD ["node", "server.js"]
