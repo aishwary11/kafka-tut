@@ -18,6 +18,7 @@ const topics = ["demo"];
 const initializeKafka = async () => {
   await producer.connect();
   await admin.connect();
+  await consumer.connect();
   console.log("Kafka producer and admin initialized");
 };
 
@@ -36,7 +37,6 @@ const ensureTopicExists = async (topic) => {
 };
 
 const createConsumer = async (topic, cb) => {
-  await consumer.connect();
   await consumer.subscribe({ topic, fromBeginning: false });
   await consumer.run({
     eachMessage: async ({ topic, message }) => {
@@ -45,7 +45,6 @@ const createConsumer = async (topic, cb) => {
       cb(msg);
     },
   });
-  return consumer;
 };
 
 app.post("/send", async (req, res) => {
