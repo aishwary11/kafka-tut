@@ -1,7 +1,7 @@
 FROM node:22-alpine
-WORKDIR /usr/src/app
+WORKDIR /app
 COPY package*.json ./
-RUN npm ci -f
+RUN npm install && npm cache clean --force
 COPY . .
 EXPOSE 3000
-CMD ["node", "server.js"]
+ENTRYPOINT ["node", "server.js"]
